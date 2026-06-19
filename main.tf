@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "ap-northeast-1"
+  region  = "ap-northeast-1"
   profile = "yoshihiro-admin"
 }
 
@@ -77,6 +77,102 @@ resource "aws_security_group" "no_inbound" {
     Name = "terraform-no-inbound-sg"
   }
 }
+
+# Private Subnet
+resource "aws_subnet" "private_1a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "ap-northeast-1a"
+
+  tags = {
+    Name = "terraform-private-subnet-1a"
+  }
+}
+
+# Private Route Table
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "terraform-private-rt"
+  }
+}
+
+# Private Subnet と Private Route Table の関連付け
+resource "aws_route_table_association" "private_1a" {
+  subnet_id      = aws_subnet.private_1a.id
+  route_table_id = aws_route_table.private.id
+}
+
+# VPC Endpoint 用 Security Group
+resource "aws_security_group" "vpc_endpoint_sg" {
+  name        = "terraform-vpc-endpoint-sg"
+  description = "Allow HTTPS from VPC to VPC endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "Allow HTTPS from VPC CIDR"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.main.cidr_block]
+  }
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "terraform-vpc-endpoint-sg"
+  }
+}
+
+# SSM Endpoint
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.ap-northeast-1.ssm"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private_1a.id]
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "terraform-vpce-ssm"
+  }
+}
+
+# SSM Messages Endpoint
+resource "aws_vpc_endpoint" "ssmmessages" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.ap-northeast-1.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private_1a.id]
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "terraform-vpce-ssmmessages"
+  }
+}
+
+# EC2 Messages Endpoint
+resource "aws_vpc_endpoint" "ec2messages" {
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.ap-northeast-1.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [aws_subnet.private_1a.id]
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "terraform-vpce-ec2messages"
+  }
+}
+
 # 最新の Amazon Linux 2023 AMI を取得
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
@@ -134,9 +230,15 @@ resource "aws_iam_instance_profile" "ec2_ssm_profile" {
 
 # SSM接続用EC2
 resource "aws_instance" "web" {
-  ami                    = data.aws_ami.amazon_linux_2023.id
-  instance_type          = "t3.micro"
-  subnet_id              = aws_subnet.public_1a.id
+  ami           = data.aws_ami.amazon_linux_2023.id
+  instance_type = "t3.micro"
+
+  # 以前の構成: Public Subnet にEC2を配置
+  # subnet_id = aws_subnet.public_1a.id
+
+  # 現在の構成: Private Subnet にEC2を配置
+  subnet_id = aws_subnet.private_1a.id
+
   vpc_security_group_ids = [aws_security_group.no_inbound.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
 
@@ -154,6 +256,12 @@ resource "aws_instance" "web" {
   }
 
   tags = {
-    Name = "terraform-ec2-ssm-test"
+    Name = "terraform-private-ec2-ssm-test"
   }
+
+  depends_on = [
+    aws_vpc_endpoint.ssm,
+    aws_vpc_endpoint.ssmmessages,
+    aws_vpc_endpoint.ec2messages
+  ]
 }
