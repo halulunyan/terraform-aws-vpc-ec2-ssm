@@ -9,6 +9,7 @@ terraform {
 
 provider "aws" {
   region = "ap-northeast-1"
+  profile = "yoshihiro-admin"
 }
 
 resource "aws_vpc" "main" {
@@ -138,6 +139,19 @@ resource "aws_instance" "web" {
   subnet_id              = aws_subnet.public_1a.id
   vpc_security_group_ids = [aws_security_group.no_inbound.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+
+  metadata_options {
+    http_tokens                 = "required"
+    http_endpoint               = "enabled"
+    http_put_response_hop_limit = 2
+  }
+
+  root_block_device {
+    volume_type           = "gp3"
+    volume_size           = 30
+    encrypted             = true
+    delete_on_termination = true
+  }
 
   tags = {
     Name = "terraform-ec2-ssm-test"
