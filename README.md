@@ -620,3 +620,8 @@ IAM module化後、root側のEC2では以下のように参照する想定。
 iam_instance_profile = module.iam.instance_profile_name
 ```
 
+## 学習ログ
+
+Terraform module化、GitHub Actionsによる自動チェック、module化後のapply、SSM Session Manager接続確認までの詳細は以下に整理しています。
+
+- [Terraform Learning Log](docs/terraform-learning-log.md)
