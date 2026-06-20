@@ -602,22 +602,7 @@ outputs.tf   = 戻り値
 
 また、`outputs.tf` は単なる実行結果の表示ファイルではなく、moduleでは外部公開インターフェースとして機能することを理解した。
 
-## 次にやること
 
-次はIAM module化を行う。
-
-対象は以下。
-
-```text
-aws_iam_role.ec2_ssm_role
-aws_iam_role_policy_attachment.ec2_ssm_managed_instance_core
-aws_iam_instance_profile.ec2_ssm_profile
-```
-
-IAM module化後、root側のEC2では以下のように参照する想定。
-
-```hcl
-iam_instance_profile = module.iam.instance_profile_name
 ```
 
 ## 学習ログ
