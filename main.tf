@@ -21,6 +21,13 @@ module "network" {
   availability_zone   = var.availability_zone
 }
 
+module "iam" {
+  source = "./modules/iam"
+
+  role_name             = "terraform-ec2-ssm-role"
+  instance_profile_name = "terraform-ec2-ssm-profile"
+}
+
 resource "aws_security_group" "no_inbound" {
   name        = "terraform-no-inbound-sg"
   description = "Security group with no inbound rules"
@@ -124,37 +131,6 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
-resource "aws_iam_role" "ec2_ssm_role" {
-  name = "terraform-ec2-ssm-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-
-  tags = {
-    Name = "terraform-ec2-ssm-role"
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "ec2_ssm_managed_instance_core" {
-  role       = aws_iam_role.ec2_ssm_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
-}
-
-resource "aws_iam_instance_profile" "ec2_ssm_profile" {
-  name = "terraform-ec2-ssm-profile"
-  role = aws_iam_role.ec2_ssm_role.name
-}
-
 resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux_2023.id
   instance_type = var.instance_type
@@ -162,7 +138,7 @@ resource "aws_instance" "web" {
   subnet_id = module.network.private_subnet_id
 
   vpc_security_group_ids = [aws_security_group.no_inbound.id]
-  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+  iam_instance_profile   = module.iam.instance_profile_name
 
   metadata_options {
     http_tokens                 = "required"
