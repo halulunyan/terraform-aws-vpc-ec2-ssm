@@ -262,3 +262,361 @@ terraform destroy
 * EBS暗号化
 * Terraform outputsの活用
 * GitHubによるTerraformコード管理
+
+# Terraform Learning Log
+
+## 目的
+
+このドキュメントは、Terraformを用いたAWSインフラ構築学習の記録である。
+単にTerraformコードを書くことではなく、以下を理解することを目的とした。
+
+* Terraformの基本操作
+* AWSリソース作成と削除
+* 変数化
+* outputsの役割
+* module化
+* GitHubによるコード管理
+* planによる差分確認
+* SSM Session Managerを利用したPrivate EC2接続
+
+## 作成したAWS構成
+
+Terraformで以下の構成を作成した。
+
+* VPC
+* Public Subnet
+* Private Subnet
+* Internet Gateway
+* Public Route Table
+* Private Route Table
+* Security Group
+* VPC Endpoint
+
+  * ssm
+  * ssmmessages
+  * ec2messages
+* IAM Role
+* IAM Instance Profile
+* EC2
+
+  * Amazon Linux 2023
+  * Private Subnet配置
+  * Public IPなし
+  * SSHなし
+  * Security Group inboundなし
+  * IMDSv2必須
+  * EBS暗号化
+* SSM Session Manager接続
+
+## Terraform基本操作
+
+使用した主なコマンドは以下。
+
+```powershell
+terraform init
+terraform fmt
+terraform validate
+terraform plan
+terraform apply
+terraform destroy
+terraform state list
+```
+
+それぞれの役割は以下。
+
+```text
+terraform init
+  Terraform作業ディレクトリを初期化する
+
+terraform fmt
+  Terraformコードのフォーマットを整える
+
+terraform validate
+  Terraform構文や参照関係が正しいか確認する
+
+terraform plan
+  実際に何が作成・変更・削除されるか確認する
+
+terraform apply
+  plan内容に従ってAWSリソースを作成・変更する
+
+terraform destroy
+  Terraform管理下のAWSリソースを削除する
+
+terraform state list
+  Terraform state上で管理されているリソース一覧を確認する
+```
+
+## variables.tf / main.tf / outputs.tf の理解
+
+Terraform moduleは、プログラムの関数のように考えると理解しやすい。
+
+```text
+variables.tf = 引数
+main.tf      = 処理本体
+outputs.tf   = 戻り値
+```
+
+### variables.tf
+
+`variables.tf` は、外部から受け取る値を定義する。
+
+例：
+
+```hcl
+variable "vpc_cidr" {
+  description = "CIDR block for the VPC"
+  type        = string
+}
+```
+
+これは、moduleが `vpc_cidr` という値を外から受け取れるようにする定義である。
+
+### main.tf
+
+`main.tf` は、実際にAWSリソースを作成する本体である。
+
+例：
+
+```hcl
+resource "aws_vpc" "main" {
+  cidr_block = var.vpc_cidr
+}
+```
+
+ここでは、`variables.tf` で定義された `var.vpc_cidr` を使ってVPCを作成している。
+
+### outputs.tf
+
+`outputs.tf` は、作成したリソースの値を外部へ公開する。
+
+例：
+
+```hcl
+output "vpc_id" {
+  value = aws_vpc.main.id
+}
+```
+
+module内で作成したVPC IDを外部へ返すことで、root module側から以下のように参照できる。
+
+```hcl
+module.network.vpc_id
+```
+
+## module化の理解
+
+最初はrootの `main.tf` にすべてのAWSリソースを直接書いていた。
+
+その後、VPC / Subnet / IGW / Route Table を `modules/network` に切り出した。
+
+### module化前
+
+```text
+root main.tf
+  ├─ VPC
+  ├─ Public Subnet
+  ├─ Private Subnet
+  ├─ Internet Gateway
+  ├─ Route Table
+  ├─ Security Group
+  ├─ VPC Endpoint
+  ├─ IAM
+  └─ EC2
+```
+
+### module化後
+
+```text
+root main.tf
+  ├─ provider
+  ├─ module "network"
+  ├─ Security Group
+  ├─ VPC Endpoint
+  ├─ IAM
+  └─ EC2
+
+modules/network/main.tf
+  ├─ VPC
+  ├─ Public Subnet
+  ├─ Private Subnet
+  ├─ Internet Gateway
+  ├─ Public Route Table
+  └─ Private Route Table
+```
+
+root側では以下のようにmoduleを呼び出す。
+
+```hcl
+module "network" {
+  source = "./modules/network"
+
+  vpc_cidr            = var.vpc_cidr
+  public_subnet_cidr  = var.public_subnet_cidr
+  private_subnet_cidr = var.private_subnet_cidr
+  availability_zone   = var.availability_zone
+}
+```
+
+module内で作成したVPCやSubnetは、`modules/network/outputs.tf` で外部公開する。
+
+```hcl
+output "vpc_id" {
+  value = aws_vpc.main.id
+}
+
+output "private_subnet_id" {
+  value = aws_subnet.private_1a.id
+}
+```
+
+root側では以下のように使う。
+
+```hcl
+vpc_id    = module.network.vpc_id
+subnet_id = module.network.private_subnet_id
+```
+
+## module化で理解した重要ポイント
+
+### var.xxx
+
+`var.xxx` は、変数として受け取った入力値を参照する。
+
+例：
+
+```hcl
+cidr_block = var.vpc_cidr
+```
+
+これは、外から渡されたVPC CIDRを使うという意味である。
+
+### module.network.xxx
+
+`module.network.xxx` は、moduleから返された出力値を参照する。
+
+例：
+
+```hcl
+vpc_id = module.network.vpc_id
+```
+
+これは、network moduleで作成したVPC IDをroot側で使うという意味である。
+
+## 今回のmodule化で変更したこと
+
+### 変更前
+
+rootの `main.tf` に以下のリソースが直接定義されていた。
+
+```text
+aws_vpc.main
+aws_subnet.public_1a
+aws_subnet.private_1a
+aws_internet_gateway.main
+aws_route_table.public
+aws_route.public_default
+aws_route_table_association.public_1a
+aws_route_table.private
+aws_route_table_association.private_1a
+```
+
+### 変更後
+
+これらを `modules/network/main.tf` に移動した。
+
+root側の参照も変更した。
+
+```hcl
+vpc_id = aws_vpc.main.id
+```
+
+から、
+
+```hcl
+vpc_id = module.network.vpc_id
+```
+
+へ変更。
+
+```hcl
+subnet_id = aws_subnet.private_1a.id
+```
+
+から、
+
+```hcl
+subnet_id = module.network.private_subnet_id
+```
+
+へ変更。
+
+## planで確認したこと
+
+module化後に `terraform plan` を実行し、以下のように表示されることを確認した。
+
+```text
+module.network.aws_vpc.main
+module.network.aws_subnet.public_1a
+module.network.aws_subnet.private_1a
+module.network.aws_internet_gateway.main
+module.network.aws_route_table.public
+module.network.aws_route_table.private
+```
+
+これにより、VPC / Subnet / IGW / Route Table がroot直書きではなく、`modules/network` から作成される構成になったことを確認した。
+
+## Git管理
+
+TerraformコードはGitHubで管理している。
+
+今回のmodule化は以下のコミットで反映済み。
+
+```text
+Refactor network resources into module
+```
+
+確認コマンド：
+
+```powershell
+git log --oneline -5
+```
+
+実行結果：
+
+```text
+73ef0ac Refactor network resources into module
+```
+
+## 学んだこと
+
+今回の学習で、Terraform moduleの基本構造を理解した。
+
+特に重要な理解は以下。
+
+```text
+variables.tf = 引数
+main.tf      = 処理本体
+outputs.tf   = 戻り値
+```
+
+また、`outputs.tf` は単なる実行結果の表示ファイルではなく、moduleでは外部公開インターフェースとして機能することを理解した。
+
+## 次にやること
+
+次はIAM module化を行う。
+
+対象は以下。
+
+```text
+aws_iam_role.ec2_ssm_role
+aws_iam_role_policy_attachment.ec2_ssm_managed_instance_core
+aws_iam_instance_profile.ec2_ssm_profile
+```
+
+IAM module化後、root側のEC2では以下のように参照する想定。
+
+```hcl
+iam_instance_profile = module.iam.instance_profile_name
+```
+
