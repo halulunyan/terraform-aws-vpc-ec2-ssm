@@ -7,16 +7,16 @@ terraform {
   }
 }
 
+
 provider "aws" {
-  region  = "ap-northeast-1"
-  profile = "yoshihiro-admin"
+  region  = var.aws_region
+  profile = var.aws_profile
 }
 
 resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
-
   tags = {
     Name = "terraform-vpc-test"
   }
@@ -24,8 +24,8 @@ resource "aws_vpc" "main" {
 
 resource "aws_subnet" "public_1a" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = "ap-northeast-1a"
+  cidr_block              = var.public_subnet_cidr
+  availability_zone       = var.availability_zone
   map_public_ip_on_launch = true
 
   tags = {
@@ -81,9 +81,8 @@ resource "aws_security_group" "no_inbound" {
 # Private Subnet
 resource "aws_subnet" "private_1a" {
   vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = "ap-northeast-1a"
-
+  cidr_block        = var.private_subnet_cidr
+  availability_zone = var.availability_zone
   tags = {
     Name = "terraform-private-subnet-1a"
   }
@@ -134,7 +133,7 @@ resource "aws_security_group" "vpc_endpoint_sg" {
 # SSM Endpoint
 resource "aws_vpc_endpoint" "ssm" {
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.ap-northeast-1.ssm"
+  service_name        = "com.amazonaws.${var.aws_region}.ssm"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = [aws_subnet.private_1a.id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
@@ -148,7 +147,7 @@ resource "aws_vpc_endpoint" "ssm" {
 # SSM Messages Endpoint
 resource "aws_vpc_endpoint" "ssmmessages" {
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.ap-northeast-1.ssmmessages"
+  service_name        = "com.amazonaws.${var.aws_region}.ssmmessages"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = [aws_subnet.private_1a.id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
@@ -162,7 +161,7 @@ resource "aws_vpc_endpoint" "ssmmessages" {
 # EC2 Messages Endpoint
 resource "aws_vpc_endpoint" "ec2messages" {
   vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.ap-northeast-1.ec2messages"
+  service_name        = "com.amazonaws.${var.aws_region}.ec2messages"
   vpc_endpoint_type   = "Interface"
   subnet_ids          = [aws_subnet.private_1a.id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
@@ -231,7 +230,7 @@ resource "aws_iam_instance_profile" "ec2_ssm_profile" {
 # SSM接続用EC2
 resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux_2023.id
-  instance_type = "t3.micro"
+  instance_type = var.instance_type
 
   # 以前の構成: Public Subnet にEC2を配置
   # subnet_id = aws_subnet.public_1a.id
@@ -250,7 +249,7 @@ resource "aws_instance" "web" {
 
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 30
+    volume_size           = var.root_volume_size
     encrypted             = true
     delete_on_termination = true
   }
