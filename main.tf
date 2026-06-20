@@ -7,63 +7,24 @@ terraform {
   }
 }
 
-
 provider "aws" {
   region  = var.aws_region
   profile = var.aws_profile
 }
 
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_support   = true
-  enable_dns_hostnames = true
-  tags = {
-    Name = "terraform-vpc-test"
-  }
-}
+module "network" {
+  source = "./modules/network"
 
-resource "aws_subnet" "public_1a" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = var.public_subnet_cidr
-  availability_zone       = var.availability_zone
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name = "terraform-public-subnet-1a"
-  }
-}
-
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "terraform-igw-test"
-  }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "terraform-public-rt"
-  }
-}
-
-resource "aws_route" "public_default" {
-  route_table_id         = aws_route_table.public.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.main.id
-}
-
-resource "aws_route_table_association" "public_1a" {
-  subnet_id      = aws_subnet.public_1a.id
-  route_table_id = aws_route_table.public.id
+  vpc_cidr            = var.vpc_cidr
+  public_subnet_cidr  = var.public_subnet_cidr
+  private_subnet_cidr = var.private_subnet_cidr
+  availability_zone   = var.availability_zone
 }
 
 resource "aws_security_group" "no_inbound" {
   name        = "terraform-no-inbound-sg"
   description = "Security group with no inbound rules"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.network.vpc_id
 
   egress {
     description = "Allow all outbound"
@@ -78,43 +39,17 @@ resource "aws_security_group" "no_inbound" {
   }
 }
 
-# Private Subnet
-resource "aws_subnet" "private_1a" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = var.private_subnet_cidr
-  availability_zone = var.availability_zone
-  tags = {
-    Name = "terraform-private-subnet-1a"
-  }
-}
-
-# Private Route Table
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "terraform-private-rt"
-  }
-}
-
-# Private Subnet と Private Route Table の関連付け
-resource "aws_route_table_association" "private_1a" {
-  subnet_id      = aws_subnet.private_1a.id
-  route_table_id = aws_route_table.private.id
-}
-
-# VPC Endpoint 用 Security Group
 resource "aws_security_group" "vpc_endpoint_sg" {
   name        = "terraform-vpc-endpoint-sg"
   description = "Allow HTTPS from VPC to VPC endpoints"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = module.network.vpc_id
 
   ingress {
     description = "Allow HTTPS from VPC CIDR"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = [aws_vpc.main.cidr_block]
+    cidr_blocks = [module.network.vpc_cidr_block]
   }
 
   egress {
@@ -130,12 +65,11 @@ resource "aws_security_group" "vpc_endpoint_sg" {
   }
 }
 
-# SSM Endpoint
 resource "aws_vpc_endpoint" "ssm" {
-  vpc_id              = aws_vpc.main.id
+  vpc_id              = module.network.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.ssm"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = [aws_subnet.private_1a.id]
+  subnet_ids          = [module.network.private_subnet_id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
   private_dns_enabled = true
 
@@ -144,12 +78,11 @@ resource "aws_vpc_endpoint" "ssm" {
   }
 }
 
-# SSM Messages Endpoint
 resource "aws_vpc_endpoint" "ssmmessages" {
-  vpc_id              = aws_vpc.main.id
+  vpc_id              = module.network.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.ssmmessages"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = [aws_subnet.private_1a.id]
+  subnet_ids          = [module.network.private_subnet_id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
   private_dns_enabled = true
 
@@ -158,12 +91,11 @@ resource "aws_vpc_endpoint" "ssmmessages" {
   }
 }
 
-# EC2 Messages Endpoint
 resource "aws_vpc_endpoint" "ec2messages" {
-  vpc_id              = aws_vpc.main.id
+  vpc_id              = module.network.vpc_id
   service_name        = "com.amazonaws.${var.aws_region}.ec2messages"
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = [aws_subnet.private_1a.id]
+  subnet_ids          = [module.network.private_subnet_id]
   security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
   private_dns_enabled = true
 
@@ -172,7 +104,6 @@ resource "aws_vpc_endpoint" "ec2messages" {
   }
 }
 
-# 最新の Amazon Linux 2023 AMI を取得
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
@@ -193,7 +124,6 @@ data "aws_ami" "amazon_linux_2023" {
   }
 }
 
-# EC2がSSMを使うためのIAM Role
 resource "aws_iam_role" "ec2_ssm_role" {
   name = "terraform-ec2-ssm-role"
 
@@ -215,28 +145,21 @@ resource "aws_iam_role" "ec2_ssm_role" {
   }
 }
 
-# SSM接続に必要なAWS管理ポリシーをアタッチ
 resource "aws_iam_role_policy_attachment" "ec2_ssm_managed_instance_core" {
   role       = aws_iam_role.ec2_ssm_role.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
-# EC2にIAM Roleを付けるためのInstance Profile
 resource "aws_iam_instance_profile" "ec2_ssm_profile" {
   name = "terraform-ec2-ssm-profile"
   role = aws_iam_role.ec2_ssm_role.name
 }
 
-# SSM接続用EC2
 resource "aws_instance" "web" {
   ami           = data.aws_ami.amazon_linux_2023.id
   instance_type = var.instance_type
 
-  # 以前の構成: Public Subnet にEC2を配置
-  # subnet_id = aws_subnet.public_1a.id
-
-  # 現在の構成: Private Subnet にEC2を配置
-  subnet_id = aws_subnet.private_1a.id
+  subnet_id = module.network.private_subnet_id
 
   vpc_security_group_ids = [aws_security_group.no_inbound.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name

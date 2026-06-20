@@ -1,16 +1,16 @@
 output "vpc_id" {
   description = "VPC ID"
-  value       = aws_vpc.main.id
+  value       = module.network.vpc_id
 }
 
 output "public_subnet_id" {
   description = "Public subnet ID"
-  value       = aws_subnet.public_1a.id
+  value       = module.network.public_subnet_id
 }
 
 output "private_subnet_id" {
   description = "Private subnet ID"
-  value       = aws_subnet.private_1a.id
+  value       = module.network.private_subnet_id
 }
 
 output "security_group_id" {
