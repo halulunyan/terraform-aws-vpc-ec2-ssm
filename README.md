@@ -528,11 +528,11 @@ NAT Gateway削除後、以下を確認しました。
 
 ## 役割分担
 
-| 通信内容 | 必要な仕組み |
-|---|---|
-| Private EC2から一般インターネットへ出る | NAT Gateway / Proxyなど |
-| Private EC2からSSMへ接続する | ssm / ssmmessages / ec2messages VPC Endpoint |
-| Private EC2からCloudWatch Logsへ送信する | logs VPC Endpoint |
+| 通信内容                              | 必要な仕組み                                       |
+| --------------------------------- | -------------------------------------------- |
+| Private EC2から一般インターネットへ出る         | NAT Gateway / Proxyなど                        |
+| Private EC2からSSMへ接続する             | ssm / ssmmessages / ec2messages VPC Endpoint |
+| Private EC2からCloudWatch Logsへ送信する | logs VPC Endpoint                            |
 
 ## 実行コマンド
 
@@ -542,6 +542,9 @@ terraform fmt -recursive
 terraform validate
 terraform plan
 terraform apply
+```
+
+> `terraform apply` を実行するとAWSリソースが作成され、利用状況に応じて料金が発生します。事前に `terraform plan` の内容を確認してください。
 
 ---
 
