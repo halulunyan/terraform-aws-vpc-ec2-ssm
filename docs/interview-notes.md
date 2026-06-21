@@ -296,7 +296,7 @@ service\_name = "com.amazonaws.${var.aws\_region}.ssm"
 
 
 
-\## 6. 面談で聞かれた場合の回答例
+\## 6. 聞かれた場合の回答例
 
 
 
