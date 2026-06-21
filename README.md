@@ -449,6 +449,100 @@ terraform destroy
 * GitHubによるTerraformコード管理
 * GitHub ActionsによるTerraform自動チェック
 
+# terraform-aws-vpc-ec2-ssm
+
+Terraformを使用して、AWS上にPrivate Subnet配置のEC2と、SSM Session ManagerおよびCloudWatch Logs用のVPC Endpointを構築する検証リポジトリです。
+
+## 構成概要
+
+この構成では、EC2インスタンスをPrivate Subnetに配置し、Public IPを付与せず、Security GroupのInboundも開放しません。
+
+管理アクセスはSSHではなく、AWS Systems Manager Session Managerを利用します。
+
+また、CloudWatch AgentをEC2にインストールし、ログファイルをCloudWatch Logsへ送信します。
+
+## 作成する主なリソース
+
+- VPC
+- Public Subnet
+- Private Subnet
+- Internet Gateway
+- Public Route Table
+- Private Route Table
+- EC2 Instance
+- Security Group
+  - EC2用: Inboundなし
+  - VPC Endpoint用: VPC CIDRから443許可
+- IAM Role / Instance Profile
+  - AmazonSSMManagedInstanceCore
+  - CloudWatchAgentServerPolicy
+- Interface VPC Endpoint
+  - ssm
+  - ssmmessages
+  - ec2messages
+  - logs
+
+## 検証したこと
+
+### 1. SSM Session Manager接続
+
+Private Subnet上のEC2に対して、以下の条件でSSM接続できることを確認しました。
+
+- Public IPなし
+- SSHなし
+- 22番ポート開放なし
+- Security Group Inboundなし
+- 踏み台サーバなし
+
+SSM接続は以下のVPC Endpoint経由で実現しています。
+
+- ssm
+- ssmmessages
+- ec2messages
+
+### 2. CloudWatch Logs送信
+
+CloudWatch AgentをEC2にインストールし、以下のログをCloudWatch Logsへ送信できることを確認しました。
+
+- `/tmp/cwagent-test.log`
+- `/var/log/dnf.log`
+
+CloudWatch Logs送信は以下のVPC Endpoint経由で実現しています。
+
+- logs
+
+### 3. NAT Gatewayなしでの閉域検証
+
+一時的にNAT Gatewayを作成し、Private Subnetから外部リポジトリへ到達できることを確認しました。
+
+その後、Private Route Tableから `0.0.0.0/0 -> NAT Gateway` のルートを削除し、さらにNAT Gateway本体とElastic IPも削除しました。
+
+NAT Gateway削除後、以下を確認しました。
+
+- SSM接続は継続可能
+- CloudWatch Logs送信は継続可能
+- `curl https://aws.amazon.com` はtimeout
+- 一般インターネット通信は不可
+
+これにより、NAT GatewayとVPC Endpointの役割分担を確認しました。
+
+## 役割分担
+
+| 通信内容 | 必要な仕組み |
+|---|---|
+| Private EC2から一般インターネットへ出る | NAT Gateway / Proxyなど |
+| Private EC2からSSMへ接続する | ssm / ssmmessages / ec2messages VPC Endpoint |
+| Private EC2からCloudWatch Logsへ送信する | logs VPC Endpoint |
+
+## 実行コマンド
+
+```powershell
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+terraform apply
+
 ---
 
 ## 学習ログ

@@ -111,6 +111,19 @@ resource "aws_vpc_endpoint" "ec2messages" {
   }
 }
 
+resource "aws_vpc_endpoint" "logs" {
+  vpc_id              = module.network.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.logs"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = [module.network.private_subnet_id]
+  security_group_ids  = [aws_security_group.vpc_endpoint_sg.id]
+  private_dns_enabled = true
+
+  tags = {
+    Name = "terraform-vpce-logs"
+  }
+}
+
 data "aws_ami" "amazon_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
