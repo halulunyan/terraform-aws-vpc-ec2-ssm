@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "aws_profile" {
   description = "AWS CLI profile name"
   type        = string
-  default     = "yoshihiro-admin"
+  default     = ""
 }
 
 variable "project_name" {
