@@ -173,6 +173,10 @@ terraform apply
 
 > `terraform apply` を実行するとAWSリソースが作成され、利用状況に応じて料金が発生します。事前に `terraform plan` の内容を確認してください。
 
+1. NAT Gatewayは optional
+2. enable_nat_gateway = true の時だけ Private EC2 から外部通信可能
+3. enable_nat_gateway = false でも SSM / CloudWatch Logs は VPC Endpoint 経由で利用可能
+
 ### SSM接続
 
 ```powershell

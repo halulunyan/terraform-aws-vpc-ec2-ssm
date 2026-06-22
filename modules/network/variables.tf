@@ -17,3 +17,9 @@ variable "availability_zone" {
   description = "Availability Zone for subnets"
   type        = string
 }
+
+variable "enable_nat_gateway" {
+  description = "Whether to create a NAT Gateway for private subnet outbound internet access"
+  type        = bool
+  default     = false
+}

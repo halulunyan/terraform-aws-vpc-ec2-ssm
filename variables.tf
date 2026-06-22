@@ -51,3 +51,9 @@ variable "root_volume_size" {
   type        = number
   default     = 30
 }
+
+variable "enable_nat_gateway" {
+  description = "Whether to create a NAT Gateway for private subnet outbound internet access"
+  type        = bool
+  default     = false
+}
