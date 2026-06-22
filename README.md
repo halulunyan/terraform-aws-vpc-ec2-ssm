@@ -63,6 +63,50 @@ VPC
 
 ---
 
+## Bootstrap
+
+このリポジトリでは、検証対象のAWSリソースとは別に、Terraform運用に必要な基盤を `bootstrap/` 配下で管理しています。
+
+| Directory                | Description                                |
+| ------------------------ | ------------------------------------------ |
+| `bootstrap/backend/`     | Terraform Remote Backend用のS3 bucketを作成     |
+| `bootstrap/github-oidc/` | GitHub ActionsからAWSへOIDC認証するためのIAM Roleを作成 |
+
+`bootstrap/` 配下は、Terraformを実務に近い形で運用するための補助構成です。
+
+---
+
+## S3 Remote Backend
+
+Terraform stateをローカルではなく、S3 Remote Backendで管理する構成にしています。
+
+Remote Backend用のS3 bucketは `bootstrap/backend/` のTerraformで作成し、`terraform init -migrate-state` により既存のlocal stateをS3へ移行しています。
+
+また、state lockにはS3 backendの `use_lockfile = true` を利用し、S3上に一時的なlock fileを作成する方式にしています。
+
+これにより、Terraform stateをローカルPCに依存せず、実務に近いRemote Backend構成で管理できるようにしています。
+
+---
+
+## GitHub Actions / OIDC
+
+このリポジトリでは、GitHub ActionsでTerraformのチェックを実行しています。
+
+GitHub Actionsでは、AWSアクセスキーをGitHub Secretsに保存せず、GitHub OIDCを利用してAWS IAM Roleを一時的にAssumeします。
+
+Workflowでは以下を実行します。
+
+* `terraform fmt -check -recursive`
+* `terraform init`
+* `terraform validate`
+* `terraform plan`
+
+GitHub Actions用のIAM Roleは `bootstrap/github-oidc/` で作成しています。
+
+この構成により、長期的なAWSアクセスキーを利用せずに、GitHub ActionsからS3 Remote Backendへアクセスし、Terraform planまで実行できます。
+
+---
+
 ## 検証したこと
 
 ### SSM Session Manager接続
@@ -110,10 +154,14 @@ NAT Gatewayへのdefault routeを削除し、さらにNAT Gateway本体とElasti
 | Private EC2から一般インターネットへ出る         | NAT Gateway / Proxyなど                        |
 | Private EC2からSSMへ接続する             | ssm / ssmmessages / ec2messages VPC Endpoint |
 | Private EC2からCloudWatch Logsへ送信する | logs VPC Endpoint                            |
+| GitHub ActionsからAWSへ認証する          | GitHub OIDC / IAM Role                       |
+| Terraform stateを共有管理する            | S3 Remote Backend / S3 lockfile              |
 
 ---
 
 ## 実行コマンド
+
+### 通常のTerraform操作
 
 ```powershell
 terraform init
@@ -125,19 +173,72 @@ terraform apply
 
 > `terraform apply` を実行するとAWSリソースが作成され、利用状況に応じて料金が発生します。事前に `terraform plan` の内容を確認してください。
 
+### SSM接続
+
+```powershell
+aws ssm start-session `
+  --target <instance-id> `
+  --region ap-northeast-1 `
+  --profile yoshihiro-admin
+```
+
+### CloudWatch Logs確認
+
+```powershell
+aws logs tail "/terraform-vpc-ec2-ssm/tmp/cwagent-test" `
+  --since 10m `
+  --region ap-northeast-1 `
+  --profile yoshihiro-admin
+```
+
 ---
 
-### S3 Remote Backend
+## Directory Structure
 
-Terraform stateをローカルではなく、S3 Remote Backendで管理する構成にしました。
-
-Remote Backend用のS3 bucketをbootstrap用Terraformで作成し、`terraform init -migrate-state` により既存のlocal stateをS3へ移行しています。
-
-また、state lockにはS3 backendの `use_lockfile = true` を利用し、S3上に一時的なlock fileを作成する方式にしています。
-
-これにより、Terraform stateをローカルPCに依存せず、実務に近いRemote Backend構成で管理できるようにしています。
+```text
+.
+├─ .github/
+│  └─ workflows/
+│     └─ terraform.yml
+│
+├─ bootstrap/
+│  ├─ backend/
+│  │  ├─ main.tf
+│  │  ├─ variables.tf
+│  │  └─ outputs.tf
+│  │
+│  └─ github-oidc/
+│     ├─ main.tf
+│     ├─ variables.tf
+│     └─ outputs.tf
+│
+├─ docs/
+│  ├─ architecture.md
+│  ├─ interview-notes.md
+│  └─ terraform-learning-log.md
+│
+├─ modules/
+│  ├─ iam/
+│  │  ├─ README.md
+│  │  ├─ main.tf
+│  │  ├─ variables.tf
+│  │  └─ outputs.tf
+│  │
+│  └─ network/
+│     ├─ README.md
+│     ├─ main.tf
+│     ├─ variables.tf
+│     └─ outputs.tf
+│
+├─ backend.tf
+├─ main.tf
+├─ variables.tf
+├─ outputs.tf
+└─ README.md
+```
 
 ---
+
 ## 関連ドキュメント
 
 詳細な検証記録や学習ログは `docs/` 配下に整理しています。
