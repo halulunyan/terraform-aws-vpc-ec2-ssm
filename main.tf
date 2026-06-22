@@ -28,6 +28,12 @@ module "iam" {
   instance_profile_name = "terraform-ec2-ssm-profile"
 }
 
+module "observability" {
+  source = "./modules/observability"
+
+  vpc_id = module.network.vpc_id
+}
+
 resource "aws_security_group" "no_inbound" {
   name        = "terraform-no-inbound-sg"
   description = "Security group with no inbound rules"

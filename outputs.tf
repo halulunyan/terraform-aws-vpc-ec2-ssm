@@ -65,10 +65,33 @@ output "private_ip" {
 
 output "ssm_connect_command" {
   description = "Command to connect to EC2 using SSM Session Manager"
-  value       = "aws ssm start-session --target ${aws_instance.web.id} --region ${var.aws_region} --profile ${var.aws_profile}"
+  value = (
+    var.aws_profile == "" ?
+    "aws ssm start-session --target ${aws_instance.web.id} --region ${var.aws_region}" :
+    "aws ssm start-session --target ${aws_instance.web.id} --region ${var.aws_region} --profile ${var.aws_profile}"
+  )
 }
 
 output "stop_instance_command" {
   description = "Command to stop EC2 instance"
-  value       = "aws ec2 stop-instances --instance-ids ${aws_instance.web.id} --region ${var.aws_region} --profile ${var.aws_profile}"
+  value = (
+    var.aws_profile == "" ?
+    "aws ec2 stop-instances --instance-ids ${aws_instance.web.id} --region ${var.aws_region}" :
+    "aws ec2 stop-instances --instance-ids ${aws_instance.web.id} --region ${var.aws_region} --profile ${var.aws_profile}"
+  )
+}
+
+output "vpc_flow_log_id" {
+  description = "VPC Flow Log ID"
+  value       = module.observability.vpc_flow_log_id
+}
+
+output "vpc_flow_logs_log_group_name" {
+  description = "CloudWatch Logs log group name for VPC Flow Logs"
+  value       = module.observability.vpc_flow_logs_log_group_name
+}
+
+output "vpc_flow_logs_role_arn" {
+  description = "IAM Role ARN for VPC Flow Logs"
+  value       = module.observability.vpc_flow_logs_role_arn
 }
