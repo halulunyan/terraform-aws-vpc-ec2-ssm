@@ -127,6 +127,17 @@ terraform apply
 
 ---
 
+### S3 Remote Backend
+
+Terraform stateをローカルではなく、S3 Remote Backendで管理する構成にしました。
+
+Remote Backend用のS3 bucketをbootstrap用Terraformで作成し、`terraform init -migrate-state` により既存のlocal stateをS3へ移行しています。
+
+また、state lockにはS3 backendの `use_lockfile = true` を利用し、S3上に一時的なlock fileを作成する方式にしています。
+
+これにより、Terraform stateをローカルPCに依存せず、実務に近いRemote Backend構成で管理できるようにしています。
+
+---
 ## 関連ドキュメント
 
 詳細な検証記録や学習ログは `docs/` 配下に整理しています。
